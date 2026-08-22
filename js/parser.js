@@ -116,8 +116,9 @@
           entries.push({ kind: 'choice', choices, lineNo });
         } else if (line.startsWith('++')) {
           entries.push(parseDualSpeechEntry(line.slice(2).trim(), lineNo));
-        } else if (line.startsWith('*')) {
-          entries.push(parseSpeechEntry(line.slice(1).trim(), lineNo, true));
+        } else if (line.startsWith('*') || /^\{[^}]*\}\s*\*/.test(line)) {
+          // narration: "* text" or "*{attrs} text" or "{attrs} * text"
+          entries.push(parseSpeechEntry(stripNarrationStar(line), lineNo, true));
         } else {
           entries.push(parseSpeechEntry(line, lineNo, false));
         }
@@ -213,6 +214,7 @@
   }
 
   // "speakers{attrs}: text" | "{attrs}: text" | ": text" | narration "text"
+  // narration never treats ":" as a speaker separator — the whole rest is text
   function parseSpeechEntry(rest, lineNo, isNarration) {
     let s = rest.trim();
     let attrsStr = null;
@@ -225,14 +227,13 @@
 
     let speakersStr = '';
     let text;
-    const colonIdx = findColon(s);
-    if (colonIdx === -1) {
-      if (isNarration) {
-        text = s;
-      } else {
+    if (isNarration) {
+      text = s; // narration: everything after attrs is the text
+    } else {
+      const colonIdx = findColon(s);
+      if (colonIdx === -1) {
         throw new Error('missing ":" after speaker — format: id{attrs}: text');
       }
-    } else {
       speakersStr = s.slice(0, colonIdx).trim();
       text = s.slice(colonIdx + 1).trim();
     }
@@ -291,6 +292,15 @@
     const first = parseSpeechEntry(parts[0].trim(), lineNo, false);
     const second = parseSpeechEntry(parts[1].trim(), lineNo, false);
     return { kind: 'speech', bubbles: [first.bubbles[0], second.bubbles[0]], lineNo };
+  }
+
+  // remove the narration "*" marker: from the start ("* text") or
+  // right after a leading attr block ("{box=wiggly} * text")
+  function stripNarrationStar(line) {
+    let s = line;
+    s = s.replace(/^(\{[^}]*\})\s*\*/, '$1 ');
+    if (s.trimStart().startsWith('*')) s = s.replace(/^\s*\*/, '');
+    return s.trim();
   }
 
   // first ':' outside {braces}

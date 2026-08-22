@@ -201,4 +201,24 @@ const { parseDocument, serializeEntries } = require('../js/parser.js');
   console.log('doc8 OK: empty @sfx/@label tolerated as placeholders');
 }
 
+// ---- narration with attrs: "{attrs} * text" and "*{attrs} text" both work ----
+{
+  const p = parse('{box=wiggly} * 旁白文字\n*{box=loud} 大声旁白\n{box=thought} * 冒号:旁白内容\n* 普通旁白');
+  assert.strictEqual(p.errors.length, 0, 'no errors: ' + JSON.stringify(p.errors));
+  const bubbles = p.ops.filter(o => o.op === 'speech').map(o => o.bubbles[0]);
+  assert.strictEqual(bubbles.length, 4);
+  assert.strictEqual(bubbles[0].narration, true, 'attrs-first narration flagged');
+  assert.strictEqual(bubbles[0].box, 'wiggly', 'box attr applied from leading block');
+  assert.strictEqual(bubbles[0].text, '旁白文字');
+  assert.strictEqual(bubbles[1].box, 'loud', 'star-first attrs still work');
+  assert.strictEqual(bubbles[2].text, '冒号:旁白内容', 'colon inside narration text kept');
+  // round-trip: serializer emits "{attrs} * text", reparses identically
+  const text = serializeEntries(p.entries);
+  const p2 = parse(text);
+  assert.strictEqual(p2.errors.length, 0, 'round-trip clean: ' + JSON.stringify(p2.errors));
+  assert.deepStrictEqual(p2.ops, p.ops, 'ops identical after round-trip');
+  assert.ok(text.includes('{box=wiggly} * 旁白文字'), 'serialized form matches user syntax');
+  console.log('doc9 OK: narration attrs in both orders + colon-safe round-trip');
+}
+
 console.log('ALL DOCUMENT TESTS PASSED');

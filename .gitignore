@@ -15,3 +15,5 @@ Thumbs.db
 
 # Vercel 本地缓存
 .vercel/
+
+.vercel
