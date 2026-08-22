@@ -1,0 +1,17 @@
+# 依赖 / 构建产物（本项目零依赖，纯静态）
+node_modules/
+dist/
+build/
+
+# 系统与编辑器杂项
+.DS_Store
+Thumbs.db
+*.log
+
+# 环境变量（本项目不需要，习惯性忽略）
+.env
+.env.*
+!.env.example
+
+# Vercel 本地缓存
+.vercel/

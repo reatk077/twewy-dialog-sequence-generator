@@ -1,0 +1,40 @@
+// 对话生成器演示脚本
+// 语法见 README.md。把 assets/sprites/ 下的占位图换成你自己的立绘即可。
+
+@title 雨夜的便利店
+@bg Event_BG_sh001_01.jpg
+@shownames on
+@speed 30
+
+// —— 登场角色（id = 显示名 | 左右 | 前后槽位 | 立绘文件模板）——
+// 模板中 {id} 是角色 id，{expr} 是表情编号（默认 1）
+!actor alice = 爱丽丝 | left | front | sprites/{id}{expr}.png
+!actor bravo = 布拉沃 | right | front | sprites/{id}{expr}.png
+!actor chloe = 克洛伊 | right | back | sprites/{id}{expr}.png
+
+alice: 嘿，你也是来找那家便利店的？
+bravo{box=thought}: 什么店？我只是路过躲雨。
+alice{expr=2}: 哦——那正好，两个人一起跑过去吧。
+chloe: 等等，还有我呢！
+alice+chloe{box=default}: 我们俩一起陪你。
+bravo{expr=3,box=loud}: 喂！三个人的话雨伞可不够啊！
+* 雨越下越大了……
+alice{box=thought}: 那，分你一半伞？
+bravo: ……哼，谢了。
+++ alice{box=thought}: 走啦走啦。 || bravo{box=default}: 别催别催。
+? 递出雨伞 -> yes
+? 自己先跑 -> no
+-> end
+
+@label yes
+alice{expr=1}: 喏，拿着。
+bravo{expr=2}: 没想到你还挺仗义的。
+alice: 那当然！
+-> end
+
+@label no
+alice{expr=3}: 我先走一步啦！
+bravo: 喂——！真是的……
+-> end
+
+@end

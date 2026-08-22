@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>对话生成器 — Dialogue Generator</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <h1>对话生成器</h1>
+  <span class="sub">TWEWY 风格对话 · 图片导出 · 可互动序列 · 脚本驱动</span>
+  <span class="sub"><a href="README.md" target="_blank">脚本语法文档</a></span>
+</header>
+
+<div class="layout">
+
+  <!-- ============ 预览 ============ -->
+  <div class="preview-col">
+    <div class="preview-frame" id="previewFrame" title="点击：下一句 / 完成打字">
+      <canvas id="preview" width="667" height="500"></canvas>
+      <div id="choices"></div>
+      <div id="overlayDone">— 完 —<br><small>点击任意处重新开始</small></div>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="btnRestart">⟲ 重新开始</button>
+      <button class="btn" id="btnPrev">← 上一句</button>
+      <button class="btn" id="btnNext">下一句 →</button>
+      <button class="btn btn-red" id="btnExportFrame">保存当前帧 PNG</button>
+      <button class="btn btn-red" id="btnExportAll">导出全部帧 PNG</button>
+    </div>
+    <div class="controls">
+      <button class="btn" id="btnAuto">▶ 播放模式</button>
+      <label class="chk-label"><input type="checkbox" id="chkLoop" /> 循环</label>
+      <button class="btn btn-red" id="btnRecord">● 录制视频</button>
+      <span class="audio-hint">播放模式：自动走完整个脚本（选择自动取第一项，间隔 1.4s）；录制：实时捕获预览画面+声音为 WebM</span>
+    </div>
+
+    <div class="statusbar">
+      <span>标题：<b id="statusTitle"></b></span>
+      <span>状态：<b id="statusPos"></b></span>
+      <span id="bgHint"></span>
+    </div>
+    <div class="audio-bar">
+      <label>BGM <input id="bgmVol" type="range" min="0" max="100" value="70" /></label>
+      <label>音效 <input id="sfxVol" type="range" min="0" max="100" value="90" /></label>
+      <label>语音 <input id="voiceVol" type="range" min="0" max="100" value="100" /></label>
+      <span class="audio-hint">音量 · 音乐在脚本里用 @bgm 设置</span>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+  <!-- ============ 右侧：标签页 ============ -->
+  <div class="editor-col">
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="script">脚本</button>
+      <button class="tab-btn" data-tab="editor">编辑器<span id="tabEditorBadge" class="tab-badge"></span></button>
+      <button class="tab-btn" data-tab="resources">资源</button>
+    </div>
+
+    <!-- ---------- 脚本 ---------- -->
+    <div id="tab-script">
+      <div class="panel">
+        <div class="panel-head">脚本 (Script)</div>
+        <div class="panel-body">
+          <textarea id="editor" spellcheck="false" placeholder="在这里粘贴对话脚本…"></textarea>
+          <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn" id="btnLoadSample">载入示例</button>
+            <label class="export-row" style="margin:0;">导出倍率
+              <input id="exportScale" type="number" min="1" max="8" step="0.5" value="2" />
+            </label>
+            <span id="exportStatus" style="font-size:13px; color:#86efac;"></span>
+          </div>
+          <div id="parseErrors"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">背景素材</div>
+        <div class="panel-body">
+          <select id="bgSelect" style="width:100%; background:#0f172a; color:#e2e8f0; border:1px solid #475569; padding:6px; font-family:inherit;"></select>
+          <div style="font-size:12px; color:#94a3b8; margin-top:6px;">
+            自带素材：4 种对话框（default / thought / wiggly / loud）、20 张场景背景、FOT-NewCezanne 字体。
+            立绘请放入 <code>assets/sprites/</code>（或脚本里指定任意路径），文件名 <code>{id}{expr}.png</code>。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- 所见即所得编辑器 ---------- -->
+    <div id="tab-editor" style="display:none">
+      <div class="panel">
+        <div class="panel-head">行列表（点击选择 · 所见即所得编辑）</div>
+        <div class="panel-body" style="padding:6px;">
+          <div class="ed-toolbar">
+            <select id="edNewKind" class="ed-input">
+              <option value="speech">对话</option>
+              <option value="narration">旁白</option>
+              <option value="choice">选择分支</option>
+              <option value="jump">跳转</option>
+              <option value="label">标签</option>
+              <option value="bg">背景</option>
+              <option value="bgm">背景音乐</option>
+              <option value="sfx">音效</option>
+              <option value="actor">角色声明</option>
+            </select>
+            <button class="btn btn-small" id="edAdd">＋ 添加</button>
+            <button class="btn btn-small btn-danger" id="edDel">🗑 删除</button>
+            <button class="btn btn-small" id="edUp">↑</button>
+            <button class="btn btn-small" id="edDown">↓</button>
+          </div>
+          <ul id="edList" class="ed-list"></ul>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">编辑当前行</div>
+        <div class="panel-body" id="edForm"></div>
+      </div>
+    </div>
+
+    <!-- ---------- 资源 ---------- -->
+    <div id="tab-resources" style="display:none">
+      <div class="panel">
+        <div class="panel-head">角色（立绘 + 语音）</div>
+        <div class="panel-body" id="resChars"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">地点（背景画面）</div>
+        <div class="panel-body" id="resLocs"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">背景音乐 BGM</div>
+        <div class="panel-body" id="resBgms"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">音效 SFX</div>
+        <div class="panel-body" id="resSfxs"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">说明</div>
+        <div class="panel-body res-note">
+          <ul>
+            <li>角色：一个角色 = 多个表情立绘 + 多句语音。脚本里用 <code>chara://角色id/表情编号</code> 引用立绘，
+              对话行加 <code>{voice=语音编号}</code> 播放该角色的语音。</li>
+            <li>地点：一个地点 = 多张背景画面（如 早晨/中午/夜晚）。脚本里用 <code>loc://地点id/画面id</code> 引用。</li>
+            <li>音乐/音效：脚本里用 <code>@bgm bgm://音乐id</code>（循环）、<code>@sfx sfx://音效id</code>（一次）；
+              或直接写文件路径（如 <code>assets/audio/x.mp3</code>）。</li>
+            <li>「打包分享」把角色（含语音）/地点/音乐/音效导出为 JSON 包，别人用「导入」即可使用。</li>
+            <li>数据保存在浏览器 localStorage（音频较占空间，超限会提示；打包文件不受此限制）。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="footnote">
+  对话框 / 背景 / 字体素材来自《The World Ends With You》（© Square Enix），仅供学习研究。
+  本项目在 <a href="https://twewygenerator.heckingsne.cc/" target="_blank">twewy-message-generator</a>（作者 Errant）基础上重新实现：
+  脚本驱动的可互动对话序列、所见即所得编辑、资源管理（角色立绘 / 地点背景）、批量 PNG 导出。
+</div>
+
+<!-- 经典脚本按序加载，file:// 下也可运行 -->
+<script src="js/parser.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/player.js"></script>
+<script src="js/resources.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
