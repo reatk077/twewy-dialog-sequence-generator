@@ -527,6 +527,38 @@ const assert = require('assert');
     console.log('speaker menu open/close OK');
   }
 
+  // ---- actor ids auto-unique when added via toolbar ----
+  {
+    const kindSelA = elements['edNewKind'];
+    kindSelA.value = 'actor';
+    elements['edAdd'].click(); // first actor -> char
+    await new Promise(r => setTimeout(r, 40));
+    elements['edAdd'].click(); // second actor -> char2 (must NOT collide)
+    await new Promise(r => setTimeout(r, 60));
+    const parsedA = require(path.join(ROOT, 'js', 'parser.js')).parse(String(editorEl.value));
+    const ids = parsedA.entries.filter(e => e.kind === 'actor').map(e => e.id);
+    assert.ok(ids.includes('char') && ids.includes('char2'),
+      'new actor ids auto-unique, got ' + JSON.stringify(ids));
+    console.log('actor auto-unique id OK');
+  }
+
+  // ---- duplicate actor ids trigger a visible warning ----
+  {
+    editorEl.value = '!actor a = A | left | front | s.png\n!actor a = B | right | front | s.png\na: hi';
+    editorEl.dispatchEvent('input');
+    await new Promise(r => setTimeout(r, 500));
+    const warnEl = document.getElementById('edWarn');
+    assert.ok(warnEl, 'edWarn element exists');
+    assert.ok(warnEl.style.display === 'block' && String(warnEl.innerHTML).includes('角色 id 重复'),
+      'duplicate actor id warning shown, got: ' + warnEl.innerHTML);
+    // clean: no duplicates -> hidden
+    editorEl.value = '!actor a = A | left | front | s.png\na: hi';
+    editorEl.dispatchEvent('input');
+    await new Promise(r => setTimeout(r, 500));
+    assert.ok(warnEl.style.display === 'none', 'warning hidden when ids unique');
+    console.log('duplicate actor id warning OK');
+  }
+
   console.log('editor.value length:', String(editorEl.value).length);
   console.log('tabEditorBadge exists:', true);
 

@@ -396,6 +396,17 @@ html, body {
 }
 .ed-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .ed-hint { font-size: 12px; color: #94a3b8; margin: 6px 2px; }
+.ed-warn-hint { color: #fca5a5; }
+.ed-warn {
+  display: none;
+  font-size: 12px;
+  color: #fca5a5;
+  background: #450a0a;
+  border: 1px solid #b91c1c;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 6px 4px 2px;
+}
 .ed-error-text { color: #fca5a5; }
 .ed-empty { color: #94a3b8; font-size: 13px; padding: 8px 2px; }
 

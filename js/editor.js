@@ -189,6 +189,21 @@
     }
 
     function renderList() {
+      // warn about duplicate actor ids (later declarations override earlier ones)
+      const warnEl = document.getElementById('edWarn');
+      if (warnEl) {
+        const seen = new Map();
+        app.entries.forEach(e => { if (e.kind === 'actor') seen.set(e.id, (seen.get(e.id) || 0) + 1); });
+        const dups = [...seen].filter(([, c]) => c > 1);
+        if (dups.length) {
+          warnEl.style.display = 'block';
+          warnEl.innerHTML = '⚠ 角色 id 重复：' + dups.map(([id, c]) => id + '（' + c + ' 次）').join('、') +
+            ' —— 后面的声明会覆盖前面的，同屏多人请使用不同 id';
+        } else {
+          warnEl.style.display = 'none';
+          warnEl.innerHTML = '';
+        }
+      }
       listEl.innerHTML = '';
       app.entries.forEach((e, i) => {
         const li = el('li', {
@@ -255,8 +270,13 @@
           return { kind: 'directive', key: 'bgm', value: '', lineNo: 0 };
         case 'sfx':
           return { kind: 'directive', key: 'sfx', value: '', lineNo: 0 };
-        case 'actor':
-          return { kind: 'actor', id: 'char', name: '新角色', side: 'left', slot: 0, pattern: 'sprites/{id}{expr}.png', lineNo: 0 };
+        case 'actor': {
+          // auto-unique id so two "角色声明" entries never silently collide
+          const used = new Set(app.entries.filter(e => e.kind === 'actor').map(e => e.id));
+          let id = 'char', n = 2;
+          while (used.has(id)) id = 'char' + (n++);
+          return { kind: 'actor', id, name: '新角色', side: 'left', slot: 0, pattern: 'sprites/{id}{expr}.png', lineNo: 0 };
+        }
         default:
           return null;
       }
@@ -347,6 +367,11 @@
 
         // speakers (skip for narration)
         if (!b.narration) {
+          if (!b.speakers || !b.speakers.length) {
+            body.appendChild(el('div', { class: 'ed-hint ed-warn-hint' }, [
+              '本行没有说话人：不会关联立绘/语音，名字标签也不显示（可用 name= 覆盖）。点「＋说话人」添加。',
+            ]));
+          }
           const chipRow = el('div', { class: 'ed-row' }, [el('label', { class: 'ed-label' }, ['说话人（方向）'])]);
           const chips = el('div', { class: 'ed-chips' });
           (b.speakers || []).forEach((sp, si) => {
