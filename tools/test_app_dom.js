@@ -105,6 +105,11 @@ function makeElement(tag) {
   Object.defineProperty(el, 'options', {
     get() { return (this.children || []).filter(c => c.tagName === 'OPTION'); },
   });
+  // canvas capabilities (recording / preview)
+  if (tag === 'canvas') {
+    el.getContext = () => makeCtx2d();
+    el.captureStream = () => ({ addTrack() {}, getTracks: () => [] });
+  }
   Object.defineProperty(el, 'innerHTML', {
     get() { return this._innerHTML; },
     set(v) {
@@ -175,6 +180,21 @@ elements['preview'] = previewEl;
 // drive the player's rAF-based transition loop (16ms ticks)
 global.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 16);
 global.cancelAnimationFrame = (id) => clearTimeout(id);
+
+// fake MediaRecorder + canvas.captureStream so the recording flow is testable
+let fakeRecorders = [];
+global.MediaRecorder = class {
+  constructor(stream, opts) { this.stream = stream; this.opts = opts; this.state = 'inactive'; fakeRecorders.push(this); }
+  start(ts) { this.state = 'recording'; this._ts = ts; }
+  stop() {
+    this.state = 'inactive';
+    if (this.ondataavailable) this.ondataavailable({ data: { size: 1 } }); // final chunk AFTER stop() flips state
+    if (this.onstop) this.onstop();
+  }
+};
+global.MediaRecorder.isTypeSupported = () => true;
+global.URL.createObjectURL = () => 'blob:fake-recording';
+global.URL.revokeObjectURL = () => {};
 
 // textarea element for #editor: keep a live .value
 global.localStorage = undefined; // resources: storage disabled
@@ -599,12 +619,19 @@ const assert = require('assert');
     console.log('playback mode auto-advance OK');
   }
 
-  // ---- record button exists (disabled without MediaRecorder) ----
+  // ---- recording flow (fake MediaRecorder): start -> stop -> finalized ----
   {
     const recBtn = elements['btnRecord'];
-    assert.ok(recBtn, 'record button exists');
-    assert.strictEqual(recBtn.disabled, true, 'record disabled when unsupported (shim has no captureStream/MediaRecorder)');
-    console.log('record button state OK');
+    assert.ok(!recBtn.disabled, 'record button enabled (MediaRecorder present)');
+    fakeRecorders.length = 0;
+    recBtn.click(); // start recording
+    await new Promise(r => setTimeout(r, 60));
+    assert.strictEqual(fakeRecorders.length, 1, 'MediaRecorder created');
+    assert.ok(String(recBtn.textContent).includes('■ 停止录制'), 'recording state shown, got: ' + recBtn.textContent);
+    fakeRecorders[0].stop(); // simulate the user stopping; final chunk then onstop
+    await new Promise(r => setTimeout(r, 300));
+    assert.strictEqual(recBtn.textContent, '● 录制视频', 'recording finalized and button reset, got: ' + recBtn.textContent);
+    console.log('recording start/stop flow OK');
   }
 
   console.log('ALL APP DOM TESTS PASSED');

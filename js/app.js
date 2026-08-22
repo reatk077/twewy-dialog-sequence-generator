@@ -127,13 +127,21 @@
       DGRenderer.render(pctx, state, display, transition);
       // mirror every frame into the recording canvas (2x) when recording
       if (recCtx) {
-        recCtx.setTransform(REC_SCALE, 0, 0, REC_SCALE, 0, 0);
-        DGRenderer.render(recCtx, state, display, transition);
+        renderRec(state, display, transition);
       }
+      lastView = { state, display, transition }; // keep for the recording repaint loop
     },
     onChange(info) { updateUI(info); },
     onError(msg) { toast(msg); },
   });
+
+  // draw the current scene into the (hidden) recording canvas
+  let lastView = null;
+  function renderRec(state, display, transition) {
+    if (!recCtx || !state) return;
+    recCtx.setTransform(REC_SCALE, 0, 0, REC_SCALE, 0, 0);
+    DGRenderer.render(recCtx, state, display, transition);
+  }
 
   function bgLoader(path, cb) {
     const res = DGResources.resolveBg(path);
@@ -930,11 +938,48 @@
     btnRecord.title = '当前浏览器不支持录制';
   }
 
+  let recStartTime = 0;
+  let recTimerId = null;
+  let recRepaintId = null;
+  let finalized = false;
+
+  function finalizeRecording() {
+    if (finalized) return;
+    finalized = true;
+    clearInterval(recTimerId);
+    clearInterval(recRepaintId);
+    const secs = Math.round((Date.now() - recStartTime) / 1000);
+    const blob = new Blob(videoChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'dialogue_recording.webm';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1200);
+    toast('录制完成：约 ' + secs + ' 秒 / ' + (blob.size / 1048576).toFixed(1) + ' MB');
+    DGAudio.stopAudioTrack();
+    // remove the hidden recording canvas from the DOM
+    if (recCanvas && recCanvas.remove) recCanvas.remove();
+    recorder = null;
+    recCanvas = recCtx = null;
+    recStream = null;
+    btnRecord.textContent = '● 录制视频';
+    btnRecord.classList.remove('rec-on');
+  }
+
   function startRecording() {
     if (recorder) return;
     recCanvas = document.createElement('canvas');
     recCanvas.width = Math.round(DGRenderer.W * REC_SCALE);
     recCanvas.height = Math.round(DGRenderer.H * REC_SCALE);
+    // captureStream() frame delivery is unreliable on canvases NOT in the DOM
+    // (Chrome/WebKit: erratic or stopped frame flow). Attach it hidden but
+    // laid out, so the stream keeps producing frames for the whole recording.
+    recCanvas.style.position = 'fixed';
+    recCanvas.style.left = '-10000px';
+    recCanvas.style.top = '0';
+    document.body.appendChild(recCanvas);
     recCtx = recCanvas.getContext('2d');
     if (typeof recCanvas.captureStream !== 'function') {
       toast('当前浏览器不支持 canvas 录制');
@@ -947,29 +992,39 @@
     recStream = stream;
     const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
       .find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m));
-    recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 12000000 } : undefined);
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8000000 } : undefined);
     videoChunks = [];
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size) videoChunks.push(e.data); };
-    recorder.onstop = () => {
-      const blob = new Blob(videoChunks, { type: 'video/webm' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'dialogue_recording.webm';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1200);
-      DGAudio.stopAudioTrack();
-      recorder = null;
-      recCanvas = recCtx = null;
-      recStream = null;
-      btnRecord.textContent = '● 录制视频';
-      btnRecord.classList.remove('rec-on');
+    finalized = false;
+    // Assemble only when the recorder is truly inactive AND the final
+    // dataavailable chunk has arrived — Chrome can deliver that chunk AFTER
+    // onstop, so assembling in onstop would cut the tail off the recording.
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size) videoChunks.push(e.data);
+      if (recorder && recorder.state === 'inactive') finalizeRecording();
     };
-    recorder.start(250);
-    btnRecord.textContent = '■ 停止录制';
+    recorder.onstop = () => {
+      // fallback for browsers that never send a final chunk after stop()
+      setTimeout(finalizeRecording, 200);
+    };
+    recorder.start(500);
+    recStartTime = Date.now();
+    btnRecord.textContent = '■ 停止录制 00:00';
+    clearInterval(recTimerId);
+    recTimerId = setInterval(() => {
+      const s = Math.floor((Date.now() - recStartTime) / 1000);
+      const mm = String(Math.floor(s / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      btnRecord.textContent = '■ 停止录制 ' + mm + ':' + ss;
+    }, 1000);
+    // keep the recording canvas perpetually "dirty" — static scenes otherwise
+    // never repaint it, and some browsers stop delivering captureStream frames
+    // (the encoder starves and the recording gets cut short)
+    clearInterval(recRepaintId);
+    recRepaintId = setInterval(() => {
+      if (recCtx && lastView) renderRec(lastView.state, lastView.display, lastView.transition);
+    }, 120);
     btnRecord.classList.add('rec-on');
-    toast('录制中（1334×1000）：请播放序列（建议开启播放模式），完成后点「停止录制」');
+    toast('录制中（1334×1000，无时长限制）：请播放序列（建议开启播放模式），完成后点「停止录制」。长录制会占用较多内存，建议单次不超过 5 分钟。');
   }
 
   function stopRecording() {
